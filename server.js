@@ -33,9 +33,10 @@ const allowedOrigins = [
   
   'http://localhost:5173',
   'http://localhost:5174',
-  'https://www.rikocraft.com',
   'https://neon-light-three.vercel.app',
-  'https://neon-admin-4ihv.vercel.app'
+  'https://neon-admin-4ihv.vercel.app',
+  "https://neon-admin-psi.vercel.app/",
+  'https://neon-light-three.vercel.app'
 ];
 
 function isVercelPreview(origin) {
