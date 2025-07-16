@@ -30,13 +30,11 @@ if (!process.env.JWT_SECRET_SELLER) {
 
 // CORS configuration - Allow specific origins for production
 const allowedOrigins = [
-  
   'http://localhost:5173',
   'http://localhost:5174',
   'https://neon-light-three.vercel.app',
   'https://neon-admin-4ihv.vercel.app',
-  "https://neon-admin-psi.vercel.app/",
-  'https://neon-light-three.vercel.app'
+  'https://neon-admin-psi.vercel.app/'
 ];
 
 function isVercelPreview(origin) {
