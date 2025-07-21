@@ -122,10 +122,19 @@ const createOrder = async (req, res) => {
           newItem.preview = uploadRes.secure_url;
         } catch (err) {
           console.error('Cloudinary upload failed:', err.message);
-          // Optionally: return error or just skip preview
           newItem.preview = '';
         }
       }
+      // Ensure required fields for custom neon/floro
+      if ((item.type === 'neon' || item.type === 'floro')) {
+        newItem.name = item.type === 'neon' ? 'Custom Neon Sign' : 'Custom Floro Sign';
+        newItem.quantity = 1;
+        newItem.price = typeof item.price === 'number' ? item.price : 0;
+      }
+      // Fallback for regular items
+      if (!newItem.name) newItem.name = 'Product';
+      if (!newItem.quantity) newItem.quantity = 1;
+      if (typeof newItem.price !== 'number') newItem.price = 0;
       processedItems.push(newItem);
     }
 
@@ -208,6 +217,7 @@ const createOrder = async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating order:', error);
+    if (error.stack) console.error('Stack:', error.stack);
     res.status(500).json({ success: false, message: 'Failed to create order.', error: error.message });
   }
 };
