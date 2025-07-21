@@ -3,10 +3,23 @@ const mongoose = require('mongoose');
 // Schema for individual items within an order
 const orderItemSchema = new mongoose.Schema({
   productId: { type: String, required: false },
-  name: { type: String, required: true },
+  name: { type: String, required: false },
   price: { type: Number, required: true },
   quantity: { type: Number, required: true },
   image: { type: String, required: false }, // Store primary image for reference
+  // Custom neon/floro fields
+  type: { type: String }, // 'neon', 'floro', or undefined for regular
+  text: [String],
+  font: String,
+  color: String,
+  size: String,
+  shape: String,
+  usage: String,
+  addOns: [String],
+  addOnPosition: { type: Object, default: null },
+  addOnSize: Number,
+  dimmer: Boolean,
+  preview: String, // Cloudinary URL for preview image
 }, { _id: false });
 
 

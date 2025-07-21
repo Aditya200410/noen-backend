@@ -6,6 +6,7 @@ const ordersJsonPath = path.join(__dirname, '../data/orders.json');
 const Product = require('../models/Product');
 const commissionController = require('./commissionController');
 const nodemailer = require('nodemailer');
+const cloudinary = require('cloudinary').v2;
 
 // Setup nodemailer transporter (reuse config from auth.js)
 const transporter = nodemailer.createTransport({
@@ -14,6 +15,12 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+});
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
 // Create a new order
@@ -101,12 +108,33 @@ const createOrder = async (req, res) => {
       };
     }
 
+    let processedItems = [];
+    for (const item of items) {
+      let newItem = { ...item };
+      // If item has a base64 preview image, upload to Cloudinary
+      if (item.preview && item.preview.startsWith('data:image/')) {
+        try {
+          const uploadRes = await cloudinary.uploader.upload(item.preview, {
+            folder: 'custom-previews',
+            resource_type: 'image',
+            overwrite: true
+          });
+          newItem.preview = uploadRes.secure_url;
+        } catch (err) {
+          console.error('Cloudinary upload failed:', err.message);
+          // Optionally: return error or just skip preview
+          newItem.preview = '';
+        }
+      }
+      processedItems.push(newItem);
+    }
+
     const newOrder = new Order({
       customerName,
       email,
       phone,
       address: addressObj,
-      items,
+      items: processedItems,
       totalAmount,
       paymentMethod,
       paymentStatus: mappedPaymentStatus,
@@ -153,7 +181,7 @@ const createOrder = async (req, res) => {
     }
 
     // Decrement stock for each product in the order
-    for (const item of items) {
+    for (const item of processedItems) {
       if (item.productId) {
         const product = await Product.findById(item.productId);
         if (product) {
