@@ -200,6 +200,23 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
       }
     }
 
+    // Ensure dimmerOptions has valid IDs based on product type
+    if (!options.dimmerOptions || options.dimmerOptions.length === 0) {
+      options.dimmerOptions = [{
+        id: productType === 'floro' ? null : false,
+        name: 'No Dimmer',
+        icon: '❌',
+        price: 0
+      }];
+    } else {
+      options.dimmerOptions = options.dimmerOptions.map(opt => ({
+        ...opt,
+        id: productType === 'floro' 
+          ? (opt.id === null ? null : 'dimmer')
+          : (typeof opt.id === 'boolean' ? opt.id : false)
+      }));
+    }
+
     // Ensure IDs are present for all items that require them
     options.addOns = options.addOns.map(addon => ({
       ...addon,
@@ -221,6 +238,34 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
       id: usage.id || `usage-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     }));
 
+    // Convert numeric values
+    options.sizes = options.sizes.map(size => ({
+      ...size,
+      width: Number(size.width),
+      height: Number(size.height),
+      price: Number(size.price)
+    }));
+
+    options.addOns = options.addOns.map(addon => ({
+      ...addon,
+      price: Number(addon.price)
+    }));
+
+    options.dimmerOptions = options.dimmerOptions.map(opt => ({
+      ...opt,
+      price: Number(opt.price)
+    }));
+
+    options.shapeOptions = options.shapeOptions.map(opt => ({
+      ...opt,
+      price: Number(opt.price)
+    }));
+
+    options.usageOptions = options.usageOptions.map(opt => ({
+      ...opt,
+      price: Number(opt.price)
+    }));
+
     // Update with new options
     const updatedOptions = await CustomizationOptions.findOneAndUpdate(
       { productType },
@@ -233,7 +278,7 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
       { 
         new: true,
         runValidators: true,
-        upsert: true // Create if doesn't exist
+        upsert: true
       }
     );
 
@@ -248,7 +293,9 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
       sizesCount: updatedOptions.sizes.length,
       fontsCount: updatedOptions.fonts.length,
       addOnsCount: updatedOptions.addOns.length,
-      backgroundsCount: updatedOptions.backgrounds.length
+      backgroundsCount: updatedOptions.backgrounds.length,
+      dimmerOptionsCount: updatedOptions.dimmerOptions.length,
+      dimmerIds: updatedOptions.dimmerOptions.map(opt => opt.id)
     });
 
     res.json(updatedOptions);

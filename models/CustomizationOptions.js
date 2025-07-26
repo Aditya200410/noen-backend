@@ -45,7 +45,26 @@ const customizationOptionsSchema = new mongoose.Schema({
   dimmerOptions: [{
     id: {
       type: mongoose.Schema.Types.Mixed,
-      required: true
+      required: true,
+      validate: {
+        validator: function(value) {
+          // For Floro: allow null or 'dimmer'
+          if (this.productType === 'floro') {
+            return value === null || value === 'dimmer';
+          }
+          // For Neon: allow boolean values
+          if (this.productType === 'neon') {
+            return typeof value === 'boolean';
+          }
+          return false;
+        },
+        message: props => {
+          if (props.doc.productType === 'floro') {
+            return `Dimmer ID must be null or 'dimmer' for Floro products. Got: ${props.value}`;
+          }
+          return `Dimmer ID must be a boolean for Neon products. Got: ${props.value}`;
+        }
+      }
     },
     name: String,
     icon: String,
@@ -74,7 +93,55 @@ const customizationOptionsSchema = new mongoose.Schema({
     default: true
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  // Add middleware to ensure at least one dimmer option exists
+  validateBeforeSave: true
+});
+
+// Add middleware to ensure at least one dimmer option exists
+customizationOptionsSchema.pre('save', function(next) {
+  if (!this.dimmerOptions || this.dimmerOptions.length === 0) {
+    if (this.productType === 'floro') {
+      this.dimmerOptions = [{
+        id: null,
+        name: 'No Dimmer',
+        icon: '❌',
+        price: 0
+      }];
+    } else {
+      this.dimmerOptions = [{
+        id: false,
+        name: 'No Dimmer',
+        icon: '❌',
+        price: 0
+      }];
+    }
+  }
+  next();
+});
+
+// Add middleware to validate dimmer options before update
+customizationOptionsSchema.pre('findOneAndUpdate', function(next) {
+  const update = this.getUpdate();
+  if (update.$set && (!update.$set.dimmerOptions || update.$set.dimmerOptions.length === 0)) {
+    const productType = update.$set.productType;
+    if (productType === 'floro') {
+      update.$set.dimmerOptions = [{
+        id: null,
+        name: 'No Dimmer',
+        icon: '❌',
+        price: 0
+      }];
+    } else {
+      update.$set.dimmerOptions = [{
+        id: false,
+        name: 'No Dimmer',
+        icon: '❌',
+        price: 0
+      }];
+    }
+  }
+  next();
 });
 
 module.exports = mongoose.model('CustomizationOptions', customizationOptionsSchema); 
