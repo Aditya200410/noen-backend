@@ -132,7 +132,7 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
     if (existingOptions) {
       // Clean up removed add-on files
       for (const addon of existingOptions.addOns) {
-        if (addon.image && !options.addOns.find(a => a.id === addon.id)) {
+        if (addon.image && !options.addOns.find(a => a.name === addon.name)) {
           try {
             const publicId = addon.image.split('/').pop().split('.')[0];
             await cloudinary.uploader.destroy(publicId);
@@ -144,7 +144,7 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
 
       // Clean up removed background files
       for (const bg of existingOptions.backgrounds) {
-        if (bg.image && !options.backgrounds.find(b => b.id === bg.id)) {
+        if (bg.image && !options.backgrounds.find(b => b.name === bg.name)) {
           try {
             const publicId = bg.image.split('/').pop().split('.')[0];
             await cloudinary.uploader.destroy(publicId);
@@ -200,44 +200,6 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
       }
     }
 
-    // Ensure dimmerOptions has valid IDs based on product type
-    if (!options.dimmerOptions || options.dimmerOptions.length === 0) {
-      options.dimmerOptions = [{
-        id: productType === 'floro' ? null : false,
-        name: 'No Dimmer',
-        icon: '❌',
-        price: 0
-      }];
-    } else {
-      options.dimmerOptions = options.dimmerOptions.map(opt => ({
-        ...opt,
-        id: productType === 'floro' 
-          ? (opt.id === null ? null : 'dimmer')
-          : (typeof opt.id === 'boolean' ? opt.id : false)
-      }));
-    }
-
-    // Ensure IDs are present for all items that require them
-    options.addOns = options.addOns.map(addon => ({
-      ...addon,
-      id: addon.id || `addon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    }));
-
-    options.backgrounds = options.backgrounds.map(bg => ({
-      ...bg,
-      id: bg.id || `bg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    }));
-
-    options.shapeOptions = options.shapeOptions.map(shape => ({
-      ...shape,
-      id: shape.id || `shape-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    }));
-
-    options.usageOptions = options.usageOptions.map(usage => ({
-      ...usage,
-      id: usage.id || `usage-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    }));
-
     // Convert numeric values
     options.sizes = options.sizes.map(size => ({
       ...size,
@@ -278,7 +240,8 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
       { 
         new: true,
         runValidators: true,
-        upsert: true
+        upsert: true,
+        setDefaultsOnInsert: true // This ensures defaults are set on upsert
       }
     );
 

@@ -26,7 +26,9 @@ const customizationOptionsSchema = new mongoose.Schema({
   addOns: [{
     id: {
       type: String,
-      required: true
+      default: function() {
+        return `addon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      }
     },
     name: String,
     icon: String,
@@ -37,7 +39,9 @@ const customizationOptionsSchema = new mongoose.Schema({
   backgrounds: [{
     id: {
       type: String,
-      required: true
+      default: function() {
+        return `bg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      }
     },
     name: String,
     image: String
@@ -45,25 +49,8 @@ const customizationOptionsSchema = new mongoose.Schema({
   dimmerOptions: [{
     id: {
       type: mongoose.Schema.Types.Mixed,
-      required: true,
-      validate: {
-        validator: function(value) {
-          // For Floro: allow null or 'dimmer'
-          if (this.productType === 'floro') {
-            return value === null || value === 'dimmer';
-          }
-          // For Neon: allow boolean values
-          if (this.productType === 'neon') {
-            return typeof value === 'boolean';
-          }
-          return false;
-        },
-        message: props => {
-          if (props.doc.productType === 'floro') {
-            return `Dimmer ID must be null or 'dimmer' for Floro products. Got: ${props.value}`;
-          }
-          return `Dimmer ID must be a boolean for Neon products. Got: ${props.value}`;
-        }
+      default: function() {
+        return this.parent().parent().productType === 'floro' ? null : false;
       }
     },
     name: String,
@@ -73,7 +60,9 @@ const customizationOptionsSchema = new mongoose.Schema({
   shapeOptions: [{
     id: {
       type: String,
-      required: true
+      default: function() {
+        return `shape-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      }
     },
     name: String,
     icon: String,
@@ -82,7 +71,9 @@ const customizationOptionsSchema = new mongoose.Schema({
   usageOptions: [{
     id: {
       type: String,
-      required: true
+      default: function() {
+        return `usage-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      }
     },
     name: String,
     icon: String,
@@ -93,54 +84,74 @@ const customizationOptionsSchema = new mongoose.Schema({
     default: true
   }
 }, {
-  timestamps: true,
-  // Add middleware to ensure at least one dimmer option exists
-  validateBeforeSave: true
+  timestamps: true
 });
 
 // Add middleware to ensure at least one dimmer option exists
 customizationOptionsSchema.pre('save', function(next) {
   if (!this.dimmerOptions || this.dimmerOptions.length === 0) {
-    if (this.productType === 'floro') {
-      this.dimmerOptions = [{
-        id: null,
-        name: 'No Dimmer',
-        icon: '❌',
-        price: 0
-      }];
-    } else {
-      this.dimmerOptions = [{
-        id: false,
-        name: 'No Dimmer',
-        icon: '❌',
-        price: 0
-      }];
-    }
+    this.dimmerOptions = [{
+      id: this.productType === 'floro' ? null : false,
+      name: 'No Dimmer',
+      icon: '❌',
+      price: 0
+    }];
   }
   next();
 });
 
-// Add middleware to validate dimmer options before update
+// Add middleware to handle updates
 customizationOptionsSchema.pre('findOneAndUpdate', function(next) {
   const update = this.getUpdate();
-  if (update.$set && (!update.$set.dimmerOptions || update.$set.dimmerOptions.length === 0)) {
-    const productType = update.$set.productType;
-    if (productType === 'floro') {
-      update.$set.dimmerOptions = [{
-        id: null,
+  const options = update.$set || update;
+
+  // Ensure IDs are generated for new items
+  if (options.addOns) {
+    options.addOns = options.addOns.map(addon => ({
+      ...addon,
+      id: addon.id || `addon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    }));
+  }
+
+  if (options.backgrounds) {
+    options.backgrounds = options.backgrounds.map(bg => ({
+      ...bg,
+      id: bg.id || `bg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    }));
+  }
+
+  if (options.shapeOptions) {
+    options.shapeOptions = options.shapeOptions.map(shape => ({
+      ...shape,
+      id: shape.id || `shape-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    }));
+  }
+
+  if (options.usageOptions) {
+    options.usageOptions = options.usageOptions.map(usage => ({
+      ...usage,
+      id: usage.id || `usage-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    }));
+  }
+
+  // Handle dimmer options
+  if (options.dimmerOptions) {
+    const productType = options.productType || this._conditions.productType;
+    if (!options.dimmerOptions.length) {
+      options.dimmerOptions = [{
+        id: productType === 'floro' ? null : false,
         name: 'No Dimmer',
         icon: '❌',
         price: 0
       }];
     } else {
-      update.$set.dimmerOptions = [{
-        id: false,
-        name: 'No Dimmer',
-        icon: '❌',
-        price: 0
-      }];
+      options.dimmerOptions = options.dimmerOptions.map(opt => ({
+        ...opt,
+        id: productType === 'floro' ? (opt.id === null ? null : 'dimmer') : (typeof opt.id === 'boolean' ? opt.id : false)
+      }));
     }
   }
+
   next();
 });
 
