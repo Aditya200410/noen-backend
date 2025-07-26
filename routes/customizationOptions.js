@@ -127,67 +127,111 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
 
     // Get existing options to handle file cleanup
     const existingOptions = await CustomizationOptions.findOne({ productType });
+    
+    // Handle file cleanup for removed items
     if (existingOptions) {
       // Clean up removed add-on files
-      existingOptions.addOns.forEach(async (addon) => {
+      for (const addon of existingOptions.addOns) {
         if (addon.image && !options.addOns.find(a => a.id === addon.id)) {
           try {
-            // Extract public_id from Cloudinary URL
             const publicId = addon.image.split('/').pop().split('.')[0];
             await cloudinary.uploader.destroy(publicId);
           } catch (err) {
             console.error('Error deleting old add-on file:', err);
           }
         }
-      });
+      }
 
       // Clean up removed background files
-      existingOptions.backgrounds.forEach(async (bg) => {
+      for (const bg of existingOptions.backgrounds) {
         if (bg.image && !options.backgrounds.find(b => b.id === bg.id)) {
           try {
-            // Extract public_id from Cloudinary URL
             const publicId = bg.image.split('/').pop().split('.')[0];
             await cloudinary.uploader.destroy(publicId);
           } catch (err) {
             console.error('Error deleting old background file:', err);
           }
         }
-      });
+      }
     }
 
-    // Process add-on files
+    // Process new files
     if (files) {
-      Object.keys(files).forEach(key => {
+      // Process add-on files
+      const addOnFileKeys = Object.keys(files).filter(key => key.startsWith('addOnFiles'));
+      for (const key of addOnFileKeys) {
         const match = key.match(/^addOnFiles\[(\d+)\]/);
         if (match) {
           const index = parseInt(match[1]);
           if (options.addOns[index]) {
+            // If there's an existing image, delete it from Cloudinary
+            if (options.addOns[index].image) {
+              try {
+                const publicId = options.addOns[index].image.split('/').pop().split('.')[0];
+                await cloudinary.uploader.destroy(publicId);
+              } catch (err) {
+                console.error('Error deleting old add-on file:', err);
+              }
+            }
             options.addOns[index].image = files[key][0].path;
           }
         }
-      });
+      }
 
       // Process background files
-      Object.keys(files).forEach(key => {
+      const bgFileKeys = Object.keys(files).filter(key => key.startsWith('backgroundFiles'));
+      for (const key of bgFileKeys) {
         const match = key.match(/^backgroundFiles\[(\d+)\]/);
         if (match) {
           const index = parseInt(match[1]);
           if (options.backgrounds[index]) {
+            // If there's an existing image, delete it from Cloudinary
+            if (options.backgrounds[index].image) {
+              try {
+                const publicId = options.backgrounds[index].image.split('/').pop().split('.')[0];
+                await cloudinary.uploader.destroy(publicId);
+              } catch (err) {
+                console.error('Error deleting old background file:', err);
+              }
+            }
             options.backgrounds[index].image = files[key][0].path;
           }
         }
-      });
+      }
     }
+
+    // Ensure IDs are present for all items that require them
+    options.addOns = options.addOns.map(addon => ({
+      ...addon,
+      id: addon.id || `addon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    }));
+
+    options.backgrounds = options.backgrounds.map(bg => ({
+      ...bg,
+      id: bg.id || `bg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    }));
+
+    options.shapeOptions = options.shapeOptions.map(shape => ({
+      ...shape,
+      id: shape.id || `shape-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    }));
+
+    options.usageOptions = options.usageOptions.map(usage => ({
+      ...usage,
+      id: usage.id || `usage-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    }));
 
     // Update with new options
     const updatedOptions = await CustomizationOptions.findOneAndUpdate(
       { productType },
       {
-        ...options,
-        updatedAt: new Date()
+        $set: {
+          ...options,
+          updatedAt: new Date()
+        }
       },
       { 
-        new: true, 
+        new: true,
         runValidators: true,
         upsert: true // Create if doesn't exist
       }
@@ -196,6 +240,16 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
     if (!updatedOptions) {
       return res.status(404).json({ message: 'Failed to update customization options' });
     }
+
+    // Log the update for debugging
+    console.log('Updated options:', {
+      productType,
+      colorsCount: updatedOptions.colors.length,
+      sizesCount: updatedOptions.sizes.length,
+      fontsCount: updatedOptions.fonts.length,
+      addOnsCount: updatedOptions.addOns.length,
+      backgroundsCount: updatedOptions.backgrounds.length
+    });
 
     res.json(updatedOptions);
   } catch (error) {
