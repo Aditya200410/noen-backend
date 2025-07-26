@@ -24,7 +24,10 @@ const customizationOptionsSchema = new mongoose.Schema({
     font: String
   }],
   addOns: [{
-    id: String,
+    id: {
+      type: String,
+      required: true
+    },
     name: String,
     icon: String,
     price: Number,
@@ -32,24 +35,36 @@ const customizationOptionsSchema = new mongoose.Schema({
     svg: String
   }],
   backgrounds: [{
-    id: String,
+    id: {
+      type: String,
+      required: true
+    },
     name: String,
     image: String
   }],
   dimmerOptions: [{
-    id: mongoose.Schema.Types.Mixed,
+    id: {
+      type: mongoose.Schema.Types.Mixed,
+      required: true
+    },
     name: String,
     icon: String,
     price: Number
   }],
   shapeOptions: [{
-    id: String,
+    id: {
+      type: String,
+      required: true
+    },
     name: String,
     icon: String,
     price: Number
   }],
   usageOptions: [{
-    id: String,
+    id: {
+      type: String,
+      required: true
+    },
     name: String,
     icon: String,
     price: Number
