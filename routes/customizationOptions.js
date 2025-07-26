@@ -23,17 +23,22 @@ const upload = multer({
   limits: {
     fileSize: 10 * 1024 * 1024 // 10MB limit
   }
-});
-
-// Configure multiple file upload fields
-const uploadFields = upload.fields([
-  { name: /^addOnFiles\[\d+\]/, maxCount: 1 }, // Dynamic field names for add-ons
-  { name: /^backgroundFiles\[\d+\]/, maxCount: 1 } // Dynamic field names for backgrounds
+}).fields([
+  { name: 'addOnFiles[0]', maxCount: 1 },
+  { name: 'addOnFiles[1]', maxCount: 1 },
+  { name: 'addOnFiles[2]', maxCount: 1 },
+  { name: 'addOnFiles[3]', maxCount: 1 },
+  { name: 'addOnFiles[4]', maxCount: 1 },
+  { name: 'backgroundFiles[0]', maxCount: 1 },
+  { name: 'backgroundFiles[1]', maxCount: 1 },
+  { name: 'backgroundFiles[2]', maxCount: 1 },
+  { name: 'backgroundFiles[3]', maxCount: 1 },
+  { name: 'backgroundFiles[4]', maxCount: 1 }
 ]);
 
 // Middleware to handle multer upload
 const handleUpload = (req, res, next) => {
-  uploadFields(req, res, function(err) {
+  upload(req, res, function(err) {
     if (err instanceof multer.MulterError) {
       return res.status(400).json({ error: 'File upload error', details: err.message });
     } else if (err) {
@@ -119,11 +124,14 @@ router.post('/', authenticateToken, handleUpload, async (req, res) => {
 });
 
 // Update customization options with file upload
-router.put('/:productType', authenticateToken, handleUpload, async (req, res) => {
+router.put('/:productType', authenticateToken, upload, async (req, res) => {
   try {
     const { productType } = req.params;
     let options = JSON.parse(req.body.options);
     const files = req.files;
+
+    console.log('Received files:', files);
+    console.log('Received options:', options);
 
     // Get existing options to handle file cleanup
     const existingOptions = await CustomizationOptions.findOne({ productType });
@@ -134,8 +142,10 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
       for (const addon of existingOptions.addOns) {
         if (addon.image && !options.addOns.find(a => a.name === addon.name)) {
           try {
+            // Extract public_id from Cloudinary URL
             const publicId = addon.image.split('/').pop().split('.')[0];
             await cloudinary.uploader.destroy(publicId);
+            console.log('Deleted old add-on file:', publicId);
           } catch (err) {
             console.error('Error deleting old add-on file:', err);
           }
@@ -146,8 +156,10 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
       for (const bg of existingOptions.backgrounds) {
         if (bg.image && !options.backgrounds.find(b => b.name === bg.name)) {
           try {
+            // Extract public_id from Cloudinary URL
             const publicId = bg.image.split('/').pop().split('.')[0];
             await cloudinary.uploader.destroy(publicId);
+            console.log('Deleted old background file:', publicId);
           } catch (err) {
             console.error('Error deleting old background file:', err);
           }
@@ -157,45 +169,30 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
 
     // Process new files
     if (files) {
+      console.log('Processing new files...');
+
       // Process add-on files
-      const addOnFileKeys = Object.keys(files).filter(key => key.startsWith('addOnFiles'));
-      for (const key of addOnFileKeys) {
-        const match = key.match(/^addOnFiles\[(\d+)\]/);
-        if (match) {
-          const index = parseInt(match[1]);
-          if (options.addOns[index]) {
-            // If there's an existing image, delete it from Cloudinary
-            if (options.addOns[index].image) {
-              try {
-                const publicId = options.addOns[index].image.split('/').pop().split('.')[0];
-                await cloudinary.uploader.destroy(publicId);
-              } catch (err) {
-                console.error('Error deleting old add-on file:', err);
-              }
-            }
-            options.addOns[index].image = files[key][0].path;
+      for (let i = 0; i < options.addOns.length; i++) {
+        const fileKey = `addOnFiles[${i}]`;
+        if (files[fileKey] && files[fileKey][0]) {
+          const file = files[fileKey][0];
+          console.log(`Processing add-on file ${i}:`, file.path);
+          options.addOns[i].image = file.path;
+
+          // For Floro, handle SVG content
+          if (productType === 'floro' && file.mimetype === 'image/svg+xml') {
+            options.addOns[i].svg = file.path;
           }
         }
       }
 
       // Process background files
-      const bgFileKeys = Object.keys(files).filter(key => key.startsWith('backgroundFiles'));
-      for (const key of bgFileKeys) {
-        const match = key.match(/^backgroundFiles\[(\d+)\]/);
-        if (match) {
-          const index = parseInt(match[1]);
-          if (options.backgrounds[index]) {
-            // If there's an existing image, delete it from Cloudinary
-            if (options.backgrounds[index].image) {
-              try {
-                const publicId = options.backgrounds[index].image.split('/').pop().split('.')[0];
-                await cloudinary.uploader.destroy(publicId);
-              } catch (err) {
-                console.error('Error deleting old background file:', err);
-              }
-            }
-            options.backgrounds[index].image = files[key][0].path;
-          }
+      for (let i = 0; i < options.backgrounds.length; i++) {
+        const fileKey = `backgroundFiles[${i}]`;
+        if (files[fileKey] && files[fileKey][0]) {
+          const file = files[fileKey][0];
+          console.log(`Processing background file ${i}:`, file.path);
+          options.backgrounds[i].image = file.path;
         }
       }
     }
@@ -228,6 +225,8 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
       price: Number(opt.price)
     }));
 
+    console.log('Processed options before update:', options);
+
     // Update with new options
     const updatedOptions = await CustomizationOptions.findOneAndUpdate(
       { productType },
@@ -241,7 +240,7 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
         new: true,
         runValidators: true,
         upsert: true,
-        setDefaultsOnInsert: true // This ensures defaults are set on upsert
+        setDefaultsOnInsert: true
       }
     );
 
@@ -249,7 +248,6 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
       return res.status(404).json({ message: 'Failed to update customization options' });
     }
 
-    // Log the update for debugging
     console.log('Updated options:', {
       productType,
       colorsCount: updatedOptions.colors.length,
@@ -258,7 +256,9 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
       addOnsCount: updatedOptions.addOns.length,
       backgroundsCount: updatedOptions.backgrounds.length,
       dimmerOptionsCount: updatedOptions.dimmerOptions.length,
-      dimmerIds: updatedOptions.dimmerOptions.map(opt => opt.id)
+      dimmerIds: updatedOptions.dimmerOptions.map(opt => opt.id),
+      addOnImages: updatedOptions.addOns.map(addon => addon.image),
+      backgroundImages: updatedOptions.backgrounds.map(bg => bg.image)
     });
 
     res.json(updatedOptions);
