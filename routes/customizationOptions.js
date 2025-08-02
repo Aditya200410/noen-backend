@@ -33,7 +33,12 @@ const upload = multer({
   { name: 'backgroundFiles[1]', maxCount: 1 },
   { name: 'backgroundFiles[2]', maxCount: 1 },
   { name: 'backgroundFiles[3]', maxCount: 1 },
-  { name: 'backgroundFiles[4]', maxCount: 1 }
+  { name: 'backgroundFiles[4]', maxCount: 1 },
+  { name: 'shapeOptionFiles[0]', maxCount: 1 },
+  { name: 'shapeOptionFiles[1]', maxCount: 1 },
+  { name: 'shapeOptionFiles[2]', maxCount: 1 },
+  { name: 'shapeOptionFiles[3]', maxCount: 1 },
+  { name: 'shapeOptionFiles[4]', maxCount: 1 }
 ]);
 
 // Middleware to handle multer upload
@@ -105,6 +110,17 @@ router.post('/', authenticateToken, handleUpload, async (req, res) => {
           }
         }
       });
+
+      // Process shapeOption files
+      Object.keys(files).forEach(key => {
+        const match = key.match(/^shapeOptionFiles\[(\d+)\]/);
+        if (match) {
+          const index = parseInt(match[1]);
+          if (options.shapeOptions && options.shapeOptions[index]) {
+            options.shapeOptions[index].image = files[key][0].path;
+          }
+        }
+      });
     }
 
     // Check if options already exist for this product type
@@ -165,6 +181,21 @@ router.put('/:productType', authenticateToken, upload, async (req, res) => {
           }
         }
       }
+
+      // Clean up removed shapeOption files
+      if (existingOptions.shapeOptions) {
+        for (const shape of existingOptions.shapeOptions) {
+          if (shape.image && (!options.shapeOptions || !options.shapeOptions.find(s => s.name === shape.name))) {
+            try {
+              const publicId = shape.image.split('/').pop().split('.')[0];
+              await cloudinary.uploader.destroy(publicId);
+              console.log('Deleted old shapeOption file:', publicId);
+            } catch (err) {
+              console.error('Error deleting old shapeOption file:', err);
+            }
+          }
+        }
+      }
     }
 
     // Process new files
@@ -193,6 +224,18 @@ router.put('/:productType', authenticateToken, upload, async (req, res) => {
           const file = files[fileKey][0];
           console.log(`Processing background file ${i}:`, file.path);
           options.backgrounds[i].image = file.path;
+        }
+      }
+
+      // Process shapeOption files
+      if (options.shapeOptions) {
+        for (let i = 0; i < options.shapeOptions.length; i++) {
+          const fileKey = `shapeOptionFiles[${i}]`;
+          if (files[fileKey] && files[fileKey][0]) {
+            const file = files[fileKey][0];
+            console.log(`Processing shapeOption file ${i}:`, file.path);
+            options.shapeOptions[i].image = file.path;
+          }
         }
       }
     }
