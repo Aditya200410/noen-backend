@@ -11,7 +11,7 @@ const TEST_CONFIG = {
   merchantSecret: process.env.PHONEPE_CLIENT_SECRET || '099eb0cd-02cf-4e2a-8aca-3e6c6aff0399',
   env: process.env.PHONEPE_ENV || 'sandbox',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
-  backendUrl: process.env.BACKEND_URL || 'https://pawnbackend-xmqa.onrender.com'
+  backendUrl: process.env.BACKEND_URL || 'https://noen-backend.onrender.com'
 };
 
 // Helper to generate X-VERIFY header

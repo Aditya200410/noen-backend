@@ -15,28 +15,26 @@ cloudinary.config({
 
 // Configure storage
 const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'customization-options',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'svg'],
-    transformation: [{ width: 800, height: 800, crop: 'limit' }],
-    resource_type: 'auto'
-  }
+    cloudinary: cloudinary,
+    params: {
+        folder: 'customization-options',
+        allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'svg'],
+        transformation: [{ width: 800, height: 800, crop: 'limit' }],
+        resource_type: 'auto'
+    }
 });
 
-// Configure multer
 const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  }
+    storage: storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10MB limit
+    }
 });
 
-// Configure multiple file upload fields
 const uploadFields = upload.fields([
-  { name: 'addOnImages', maxCount: 5 },
-  { name: 'backgroundImages', maxCount: 5 },
-  { name: 'shapeOptionImages', maxCount: 5 }
+    { name: 'addOnImages', maxCount: 5 },
+    { name: 'backgroundImages', maxCount: 5 },
+    { name: 'shapeOptionImages', maxCount: 5 }
 ]);
 
 // Middleware to handle multer upload
@@ -147,172 +145,163 @@ router.post('/', authenticateToken, handleUpload, async (req, res) => {
 
 // Update customization options with file upload
 router.put('/:productType', authenticateToken, handleUpload, async (req, res) => {
-  try {
-    console.log('=== Updating Customization Options ===');
-    const { productType } = req.params;
-    let options = JSON.parse(req.body.options);
-    const files = req.files;
+    try {
+        const { productType } = req.params;
+        let options = JSON.parse(req.body.options);
+        const files = req.files;
 
-    // Get existing options to handle file cleanup
-    const existingOptions = await CustomizationOptions.findOne({ productType });
-    
-    // Handle file cleanup for removed items
-    if (existingOptions) {
-      // Clean up removed add-on files
-      for (const addon of existingOptions.addOns) {
-        if (addon.image && !options.addOns.find(a => a.name === addon.name)) {
-          try {
-            // Extract public_id from Cloudinary URL
-            const publicId = addon.image.split('/').pop().split('.')[0];
-            await cloudinary.uploader.destroy(publicId);
-            console.log('Deleted old add-on file:', publicId);
-          } catch (err) {
-            console.error('Error deleting old add-on file:', err);
-          }
-        }
-      }
-
-      // Clean up removed background files
-      for (const bg of existingOptions.backgrounds) {
-        if (bg.image && !options.backgrounds.find(b => b.name === bg.name)) {
-          try {
-            // Extract public_id from Cloudinary URL
-            const publicId = bg.image.split('/').pop().split('.')[0];
-            await cloudinary.uploader.destroy(publicId);
-            console.log('Deleted old background file:', publicId);
-          } catch (err) {
-            console.error('Error deleting old background file:', err);
-          }
-        }
-      }
-
-      // Clean up removed shapeOption files
-      if (existingOptions.shapeOptions) {
-        for (const shape of existingOptions.shapeOptions) {
-          if (shape.image && (!options.shapeOptions || !options.shapeOptions.find(s => s.name === shape.name))) {
-            try {
-              const publicId = shape.image.split('/').pop().split('.')[0];
-              await cloudinary.uploader.destroy(publicId);
-              console.log('Deleted old shapeOption file:', publicId);
-            } catch (err) {
-              console.error('Error deleting old shapeOption file:', err);
+        // Clean up old files
+        const existingOptions = await CustomizationOptions.findOne({ productType });
+        if (existingOptions) {
+            // Delete removed files from Cloudinary
+            for (const addon of existingOptions.addOns) {
+                if (addon.image && !options.addOns.find(a => a.name === addon.name)) {
+                    const publicId = addon.image.split('/').pop().split('.')[0];
+                    await cloudinary.uploader.destroy(publicId);
+                }
             }
+
+            // Clean up removed background files
+            for (const bg of existingOptions.backgrounds) {
+                if (bg.image && !options.backgrounds.find(b => b.name === bg.name)) {
+                    try {
+                      // Extract public_id from Cloudinary URL
+                      const publicId = bg.image.split('/').pop().split('.')[0];
+                      await cloudinary.uploader.destroy(publicId);
+                      console.log('Deleted old background file:', publicId);
+                    } catch (err) {
+                      console.error('Error deleting old background file:', err);
+                    }
+                }
+            }
+
+            // Clean up removed shapeOption files
+            if (existingOptions.shapeOptions) {
+                for (const shape of existingOptions.shapeOptions) {
+                    if (shape.image && (!options.shapeOptions || !options.shapeOptions.find(s => s.name === shape.name))) {
+                        try {
+                          const publicId = shape.image.split('/').pop().split('.')[0];
+                          await cloudinary.uploader.destroy(publicId);
+                          console.log('Deleted old shapeOption file:', publicId);
+                        } catch (err) {
+                          console.error('Error deleting old shapeOption file:', err);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process new files
+        if (files) {
+            console.log('Processing new files...');
+
+            // Process add-on files
+            for (let i = 0; i < options.addOns.length; i++) {
+                const fileKey = `addOnFiles[${i}]`;
+                if (files[fileKey] && files[fileKey][0]) {
+                    const file = files[fileKey][0];
+                    console.log(`Processing add-on file ${i}:`, file.path);
+                    options.addOns[i].image = file.path;
+
+                    // For Floro, handle SVG content
+                    if (productType === 'floro' && file.mimetype === 'image/svg+xml') {
+                        options.addOns[i].svg = file.path;
+                    }
+                }
+            }
+
+            // Process background files
+            for (let i = 0; i < options.backgrounds.length; i++) {
+                const fileKey = `backgroundFiles[${i}]`;
+                if (files[fileKey] && files[fileKey][0]) {
+                    const file = files[fileKey][0];
+                    console.log(`Processing background file ${i}:`, file.path);
+                    options.backgrounds[i].image = file.path;
+                }
+            }
+
+            // Process shapeOption files
+            if (options.shapeOptions) {
+                for (let i = 0; i < options.shapeOptions.length; i++) {
+                    const fileKey = `shapeOptionFiles[${i}]`;
+                    if (files[fileKey] && files[fileKey][0]) {
+                        const file = files[fileKey][0];
+                        console.log(`Processing shapeOption file ${i}:`, file.path);
+                        options.shapeOptions[i].image = file.path;
+                    }
+                }
+            }
+        }
+
+        // Convert numeric values
+        options.sizes = options.sizes.map(size => ({
+          ...size,
+          width: Number(size.width),
+          height: Number(size.height),
+          price: Number(size.price)
+        }));
+
+        options.addOns = options.addOns.map(addon => ({
+          ...addon,
+          price: Number(addon.price)
+        }));
+
+        options.dimmerOptions = options.dimmerOptions.map(opt => ({
+          ...opt,
+          price: Number(opt.price)
+        }));
+
+        options.shapeOptions = options.shapeOptions.map(opt => ({
+          ...opt,
+          price: Number(opt.price)
+        }));
+
+        options.usageOptions = options.usageOptions.map(opt => ({
+          ...opt,
+          price: Number(opt.price)
+        }));
+
+        console.log('Processed options before update:', options);
+
+        // Update with new options
+        const updatedOptions = await CustomizationOptions.findOneAndUpdate(
+          { productType },
+          {
+            $set: {
+              ...options,
+              updatedAt: new Date()
+            }
+          },
+          { 
+            new: true,
+            runValidators: true,
+            upsert: true,
+            setDefaultsOnInsert: true
           }
+        );
+
+        if (!updatedOptions) {
+          return res.status(404).json({ message: 'Failed to update customization options' });
         }
-      }
+
+        console.log('Updated options:', {
+          productType,
+          colorsCount: updatedOptions.colors.length,
+          sizesCount: updatedOptions.sizes.length,
+          fontsCount: updatedOptions.fonts.length,
+          addOnsCount: updatedOptions.addOns.length,
+          backgroundsCount: updatedOptions.backgrounds.length,
+          dimmerOptionsCount: updatedOptions.dimmerOptions.length,
+          dimmerIds: updatedOptions.dimmerOptions.map(opt => opt.id),
+          addOnImages: updatedOptions.addOns.map(addon => addon.image),
+          backgroundImages: updatedOptions.backgrounds.map(bg => bg.image)
+        });
+
+        res.json(updatedOptions);
+    } catch (error) {
+        console.error('Error updating customization options:', error);
+        res.status(400).json({ message: error.message });
     }
-
-    // Process new files
-    if (files) {
-      console.log('Processing new files...');
-
-      // Process add-on files
-      for (let i = 0; i < options.addOns.length; i++) {
-        const fileKey = `addOnFiles[${i}]`;
-        if (files[fileKey] && files[fileKey][0]) {
-          const file = files[fileKey][0];
-          console.log(`Processing add-on file ${i}:`, file.path);
-          options.addOns[i].image = file.path;
-
-          // For Floro, handle SVG content
-          if (productType === 'floro' && file.mimetype === 'image/svg+xml') {
-            options.addOns[i].svg = file.path;
-          }
-        }
-      }
-
-      // Process background files
-      for (let i = 0; i < options.backgrounds.length; i++) {
-        const fileKey = `backgroundFiles[${i}]`;
-        if (files[fileKey] && files[fileKey][0]) {
-          const file = files[fileKey][0];
-          console.log(`Processing background file ${i}:`, file.path);
-          options.backgrounds[i].image = file.path;
-        }
-      }
-
-      // Process shapeOption files
-      if (options.shapeOptions) {
-        for (let i = 0; i < options.shapeOptions.length; i++) {
-          const fileKey = `shapeOptionFiles[${i}]`;
-          if (files[fileKey] && files[fileKey][0]) {
-            const file = files[fileKey][0];
-            console.log(`Processing shapeOption file ${i}:`, file.path);
-            options.shapeOptions[i].image = file.path;
-          }
-        }
-      }
-    }
-
-    // Convert numeric values
-    options.sizes = options.sizes.map(size => ({
-      ...size,
-      width: Number(size.width),
-      height: Number(size.height),
-      price: Number(size.price)
-    }));
-
-    options.addOns = options.addOns.map(addon => ({
-      ...addon,
-      price: Number(addon.price)
-    }));
-
-    options.dimmerOptions = options.dimmerOptions.map(opt => ({
-      ...opt,
-      price: Number(opt.price)
-    }));
-
-    options.shapeOptions = options.shapeOptions.map(opt => ({
-      ...opt,
-      price: Number(opt.price)
-    }));
-
-    options.usageOptions = options.usageOptions.map(opt => ({
-      ...opt,
-      price: Number(opt.price)
-    }));
-
-    console.log('Processed options before update:', options);
-
-    // Update with new options
-    const updatedOptions = await CustomizationOptions.findOneAndUpdate(
-      { productType },
-      {
-        $set: {
-          ...options,
-          updatedAt: new Date()
-        }
-      },
-      { 
-        new: true,
-        runValidators: true,
-        upsert: true,
-        setDefaultsOnInsert: true
-      }
-    );
-
-    if (!updatedOptions) {
-      return res.status(404).json({ message: 'Failed to update customization options' });
-    }
-
-    console.log('Updated options:', {
-      productType,
-      colorsCount: updatedOptions.colors.length,
-      sizesCount: updatedOptions.sizes.length,
-      fontsCount: updatedOptions.fonts.length,
-      addOnsCount: updatedOptions.addOns.length,
-      backgroundsCount: updatedOptions.backgrounds.length,
-      dimmerOptionsCount: updatedOptions.dimmerOptions.length,
-      dimmerIds: updatedOptions.dimmerOptions.map(opt => opt.id),
-      addOnImages: updatedOptions.addOns.map(addon => addon.image),
-      backgroundImages: updatedOptions.backgrounds.map(bg => bg.image)
-    });
-
-    res.json(updatedOptions);
-  } catch (error) {
-    console.error('Error updating customization options:', error);
-    res.status(400).json({ message: error.message });
-  }
 });
 
 // Delete customization options (soft delete)
