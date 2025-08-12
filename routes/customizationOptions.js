@@ -34,19 +34,31 @@ const upload = multer({
 
 // Configure multiple file upload fields
 const uploadFields = upload.fields([
-  { name: 'addOnFiles', maxCount: 5 },
-  { name: 'backgroundFiles', maxCount: 5 },
-  { name: 'shapeOptionFiles', maxCount: 5 }
+  { name: 'addOnImages', maxCount: 5 },
+  { name: 'backgroundImages', maxCount: 5 },
+  { name: 'shapeOptionImages', maxCount: 5 }
 ]);
 
 // Middleware to handle multer upload
 const handleUpload = (req, res, next) => {
   uploadFields(req, res, function(err) {
     if (err instanceof multer.MulterError) {
+      console.error('Multer error:', err);
       return res.status(400).json({ error: 'File upload error', details: err.message });
     } else if (err) {
+      console.error('Upload error:', err);
       return res.status(500).json({ error: 'File upload error', details: err.message });
     }
+    
+    // Log successful file uploads
+    if (req.files) {
+      console.log('Files received:', {
+        addOnImages: req.files.addOnImages?.length || 0,
+        backgroundImages: req.files.backgroundImages?.length || 0,
+        shapeOptionImages: req.files.shapeOptionImages?.length || 0
+      });
+    }
+    
     next();
   });
 };
@@ -83,42 +95,37 @@ router.get('/:productType', async (req, res) => {
 // Create new customization options with file upload
 router.post('/', authenticateToken, handleUpload, async (req, res) => {
   try {
+    console.log('=== Creating New Customization Options ===');
     let options = JSON.parse(req.body.options);
     const files = req.files;
 
-    // Process add-on files
     if (files) {
-      Object.keys(files).forEach(key => {
-        const match = key.match(/^addOnFiles\[(\d+)\]/);
-        if (match) {
-          const index = parseInt(match[1]);
+      // Process addOn images
+      if (files.addOnImages) {
+        files.addOnImages.forEach((file, index) => {
           if (options.addOns[index]) {
-            options.addOns[index].image = files[key][0].path;
+            options.addOns[index].image = file.path;
           }
-        }
-      });
+        });
+      }
 
-      // Process background files
-      Object.keys(files).forEach(key => {
-        const match = key.match(/^backgroundFiles\[(\d+)\]/);
-        if (match) {
-          const index = parseInt(match[1]);
+      // Process background images
+      if (files.backgroundImages) {
+        files.backgroundImages.forEach((file, index) => {
           if (options.backgrounds[index]) {
-            options.backgrounds[index].image = files[key][0].path;
+            options.backgrounds[index].image = file.path;
           }
-        }
-      });
+        });
+      }
 
-      // Process shapeOption files
-      Object.keys(files).forEach(key => {
-        const match = key.match(/^shapeOptionFiles\[(\d+)\]/);
-        if (match) {
-          const index = parseInt(match[1]);
-          if (options.shapeOptions && options.shapeOptions[index]) {
-            options.shapeOptions[index].image = files[key][0].path;
+      // Process shapeOption images
+      if (files.shapeOptionImages) {
+        files.shapeOptionImages.forEach((file, index) => {
+          if (options.shapeOptions[index]) {
+            options.shapeOptions[index].image = file.path;
           }
-        }
-      });
+        });
+      }
     }
 
     // Check if options already exist for this product type
@@ -133,19 +140,18 @@ router.post('/', authenticateToken, handleUpload, async (req, res) => {
     const savedOptions = await customizationOptions.save();
     res.status(201).json(savedOptions);
   } catch (error) {
+    console.error('Error creating customization options:', error);
     res.status(400).json({ message: error.message });
   }
 });
 
 // Update customization options with file upload
-router.put('/:productType', authenticateToken, upload, async (req, res) => {
+router.put('/:productType', authenticateToken, handleUpload, async (req, res) => {
   try {
+    console.log('=== Updating Customization Options ===');
     const { productType } = req.params;
     let options = JSON.parse(req.body.options);
     const files = req.files;
-
-    console.log('Received files:', files);
-    console.log('Received options:', options);
 
     // Get existing options to handle file cleanup
     const existingOptions = await CustomizationOptions.findOne({ productType });
