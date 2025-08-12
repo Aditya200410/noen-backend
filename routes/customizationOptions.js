@@ -45,12 +45,7 @@ const upload = multer({
   { name: 'shapeOptionFiles[4]', maxCount: 1 }
 ]);
 
-// Middleware to handle multer upload
-const uploadFields = upload.fields([
-  { name: 'addOnFiles', maxCount: 5 },
-  { name: 'backgroundFiles', maxCount: 5 },
-  { name: 'shapeOptionFiles', maxCount: 5 }
-]);
+
 
 const handleUpload = (req, res, next) => {
   uploadFields(req, res, function(err) {
