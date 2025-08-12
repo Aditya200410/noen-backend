@@ -13,7 +13,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Configure storage for customization options
+// Configure storage
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
@@ -30,27 +30,18 @@ const upload = multer({
   limits: {
     fileSize: 10 * 1024 * 1024 // 10MB limit
   }
-}).fields([
-  { name: 'addOnFiles[0]', maxCount: 1 },
-  { name: 'addOnFiles[1]', maxCount: 1 },
-  { name: 'addOnFiles[2]', maxCount: 1 },
-  { name: 'addOnFiles[3]', maxCount: 1 },
-  { name: 'addOnFiles[4]', maxCount: 1 },
-  { name: 'backgroundFiles[0]', maxCount: 1 },
-  { name: 'backgroundFiles[1]', maxCount: 1 },
-  { name: 'backgroundFiles[2]', maxCount: 1 },
-  { name: 'backgroundFiles[3]', maxCount: 1 },
-  { name: 'backgroundFiles[4]', maxCount: 1 },
-  { name: 'shapeOptionFiles[0]', maxCount: 1 },
-  { name: 'shapeOptionFiles[1]', maxCount: 1 },
-  { name: 'shapeOptionFiles[2]', maxCount: 1 },
-  { name: 'shapeOptionFiles[3]', maxCount: 1 },
-  { name: 'shapeOptionFiles[4]', maxCount: 1 }
+});
+
+// Configure multiple file upload fields
+const uploadFields = upload.fields([
+  { name: 'addOnFiles', maxCount: 5 },
+  { name: 'backgroundFiles', maxCount: 5 },
+  { name: 'shapeOptionFiles', maxCount: 5 }
 ]);
 
 // Middleware to handle multer upload
 const handleUpload = (req, res, next) => {
-  upload(req, res, function(err) {
+  uploadFields(req, res, function(err) {
     if (err instanceof multer.MulterError) {
       return res.status(400).json({ error: 'File upload error', details: err.message });
     } else if (err) {
@@ -339,4 +330,4 @@ router.delete('/:productType', authenticateToken, async (req, res) => {
   }
 });
 
-module.exports = router; 
+module.exports = router;
