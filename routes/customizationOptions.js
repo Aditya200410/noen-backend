@@ -5,13 +5,11 @@ const { authenticateToken } = require('../middleware/auth');
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('cloudinary').v2;
-
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
-
 // Configure storage for customization options
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
@@ -48,8 +46,14 @@ const upload = multer({
 ]);
 
 // Middleware to handle multer upload
+const uploadFields = upload.fields([
+  { name: 'addOnFiles', maxCount: 5 },
+  { name: 'backgroundFiles', maxCount: 5 },
+  { name: 'shapeOptionFiles', maxCount: 5 }
+]);
+
 const handleUpload = (req, res, next) => {
-  upload(req, res, function(err) {
+  uploadFields(req, res, function(err) {
     if (err instanceof multer.MulterError) {
       return res.status(400).json({ error: 'File upload error', details: err.message });
     } else if (err) {
@@ -58,7 +62,6 @@ const handleUpload = (req, res, next) => {
     next();
   });
 };
-
 // Get all customization options
 router.get('/', async (req, res) => {
   try {
@@ -146,27 +149,77 @@ router.post('/', authenticateToken, handleUpload, async (req, res) => {
 });
 
 // Update customization options with file upload
-router.put('/:productType', authenticateToken, upload, async (req, res) => {
+router.put('/:productType', authenticateToken, handleUpload, async (req, res) => {
   try {
     const { productType } = req.params;
     let options = JSON.parse(req.body.options);
     const files = req.files;
 
-    console.log('Received files:', files);
-    console.log('Received options:', options);
-
-    // Get existing options to handle file cleanup
     const existingOptions = await CustomizationOptions.findOne({ productType });
-    
-    // File cleanup logic...
-    // (rest unchanged from your original PUT route)
-    
+
+    if (files) {
+      // Process add-on files
+      if (files.addOnFiles) {
+        options.addOns = options.addOns.map((addon) => {
+          if (addon.file) {
+            const file = files.addOnFiles.find(f => f.originalname === addon.file.name);
+            return { ...addon, image: file.path };
+          }
+          return addon;
+        });
+      }
+
+      // Process background files
+      if (files.backgroundFiles) {
+        options.backgrounds = options.backgrounds.map((background) => {
+          if (background.file) {
+            const file = files.backgroundFiles.find(f => f.originalname === background.file.name);
+            return { ...background, image: file.path };
+          }
+          return background;
+        });
+      }
+
+      // Process shapeOption files
+      if (files.shapeOptionFiles && options.shapeOptions) {
+        options.shapeOptions = options.shapeOptions.map((shape) => {
+          if (shape.file) {
+            const file = files.shapeOptionFiles.find(f => f.originalname === shape.file.name);
+            return { ...shape, image: file.path };
+          }
+          return shape;
+        });
+      }
+    }
+
+    const updatedOptions = await CustomizationOptions.findOneAndUpdate(
+      { productType },
+      {
+        $set: {
+          ...options,
+          updatedAt: new Date()
+        }
+      },
+      {
+        new: true,
+        runValidators: true,
+        upsert: true,
+        setDefaultsOnInsert: true
+      }
+    );
+
+    if (!updatedOptions) {
+      return res.status(404).json({ message: 'Failed to update customization options' });
+    }
+
     res.json(updatedOptions);
   } catch (error) {
     console.error('Error updating customization options:', error);
     res.status(400).json({ message: error.message });
   }
 });
+
+
 // Delete customization options (soft delete)
 router.delete('/:productType', authenticateToken, async (req, res) => {
   try {
