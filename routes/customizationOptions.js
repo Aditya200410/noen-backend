@@ -5,11 +5,14 @@ const { authenticateToken } = require('../middleware/auth');
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('cloudinary').v2;
+
+// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
+
 // Configure storage for customization options
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
@@ -45,10 +48,9 @@ const upload = multer({
   { name: 'shapeOptionFiles[4]', maxCount: 1 }
 ]);
 
-
-
+// Middleware to handle multer upload
 const handleUpload = (req, res, next) => {
-  uploadFields(req, res, function(err) {
+  upload(req, res, function(err) {
     if (err instanceof multer.MulterError) {
       return res.status(400).json({ error: 'File upload error', details: err.message });
     } else if (err) {
@@ -57,6 +59,7 @@ const handleUpload = (req, res, next) => {
     next();
   });
 };
+
 // Get all customization options
 router.get('/', async (req, res) => {
   try {
@@ -144,49 +147,137 @@ router.post('/', authenticateToken, handleUpload, async (req, res) => {
 });
 
 // Update customization options with file upload
-router.put('/:productType', authenticateToken, handleUpload, async (req, res) => {
+router.put('/:productType', authenticateToken, upload, async (req, res) => {
   try {
     const { productType } = req.params;
     let options = JSON.parse(req.body.options);
     const files = req.files;
 
+    console.log('Received files:', files);
+    console.log('Received options:', options);
+
+    // Get existing options to handle file cleanup
     const existingOptions = await CustomizationOptions.findOne({ productType });
-
-    if (files) {
-      // Process add-on files
-      if (files.addOnFiles) {
-        options.addOns = options.addOns.map((addon) => {
-          if (addon.file) {
-            const file = files.addOnFiles.find(f => f.originalname === addon.file.name);
-            return { ...addon, image: file.path };
+    
+    // Handle file cleanup for removed items
+    if (existingOptions) {
+      // Clean up removed add-on files
+      for (const addon of existingOptions.addOns) {
+        if (addon.image && !options.addOns.find(a => a.name === addon.name)) {
+          try {
+            // Extract public_id from Cloudinary URL
+            const publicId = addon.image.split('/').pop().split('.')[0];
+            await cloudinary.uploader.destroy(publicId);
+            console.log('Deleted old add-on file:', publicId);
+          } catch (err) {
+            console.error('Error deleting old add-on file:', err);
           }
-          return addon;
-        });
+        }
       }
 
-      // Process background files
-      if (files.backgroundFiles) {
-        options.backgrounds = options.backgrounds.map((background) => {
-          if (background.file) {
-            const file = files.backgroundFiles.find(f => f.originalname === background.file.name);
-            return { ...background, image: file.path };
+      // Clean up removed background files
+      for (const bg of existingOptions.backgrounds) {
+        if (bg.image && !options.backgrounds.find(b => b.name === bg.name)) {
+          try {
+            // Extract public_id from Cloudinary URL
+            const publicId = bg.image.split('/').pop().split('.')[0];
+            await cloudinary.uploader.destroy(publicId);
+            console.log('Deleted old background file:', publicId);
+          } catch (err) {
+            console.error('Error deleting old background file:', err);
           }
-          return background;
-        });
+        }
       }
 
-      // Process shapeOption files
-      if (files.shapeOptionFiles && options.shapeOptions) {
-        options.shapeOptions = options.shapeOptions.map((shape) => {
-          if (shape.file) {
-            const file = files.shapeOptionFiles.find(f => f.originalname === shape.file.name);
-            return { ...shape, image: file.path };
+      // Clean up removed shapeOption files
+      if (existingOptions.shapeOptions) {
+        for (const shape of existingOptions.shapeOptions) {
+          if (shape.image && (!options.shapeOptions || !options.shapeOptions.find(s => s.name === shape.name))) {
+            try {
+              const publicId = shape.image.split('/').pop().split('.')[0];
+              await cloudinary.uploader.destroy(publicId);
+              console.log('Deleted old shapeOption file:', publicId);
+            } catch (err) {
+              console.error('Error deleting old shapeOption file:', err);
+            }
           }
-          return shape;
-        });
+        }
       }
     }
 
+    // Process new files
+    if (files) {
+      console.log('Processing new files...');
+
+      // Process add-on files
+      for (let i = 0; i < options.addOns.length; i++) {
+        const fileKey = `addOnFiles[${i}]`;
+        if (files[fileKey] && files[fileKey][0]) {
+          const file = files[fileKey][0];
+          console.log(`Processing add-on file ${i}:`, file.path);
+          options.addOns[i].image = file.path;
+
+          // For Floro, handle SVG content
+          if (productType === 'floro' && file.mimetype === 'image/svg+xml') {
+            options.addOns[i].svg = file.path;
+          }
+        }
+      }
+
+      // Process background files
+      for (let i = 0; i < options.backgrounds.length; i++) {
+        const fileKey = `backgroundFiles[${i}]`;
+        if (files[fileKey] && files[fileKey][0]) {
+          const file = files[fileKey][0];
+          console.log(`Processing background file ${i}:`, file.path);
+          options.backgrounds[i].image = file.path;
+        }
+      }
+
+      // Process shapeOption files
+      if (options.shapeOptions) {
+        for (let i = 0; i < options.shapeOptions.length; i++) {
+          const fileKey = `shapeOptionFiles[${i}]`;
+          if (files[fileKey] && files[fileKey][0]) {
+            const file = files[fileKey][0];
+            console.log(`Processing shapeOption file ${i}:`, file.path);
+            options.shapeOptions[i].image = file.path;
+          }
+        }
+      }
+    }
+
+    // Convert numeric values
+    options.sizes = options.sizes.map(size => ({
+      ...size,
+      width: Number(size.width),
+      height: Number(size.height),
+      price: Number(size.price)
+    }));
+
+    options.addOns = options.addOns.map(addon => ({
+      ...addon,
+      price: Number(addon.price)
+    }));
+
+    options.dimmerOptions = options.dimmerOptions.map(opt => ({
+      ...opt,
+      price: Number(opt.price)
+    }));
+
+    options.shapeOptions = options.shapeOptions.map(opt => ({
+      ...opt,
+      price: Number(opt.price)
+    }));
+
+    options.usageOptions = options.usageOptions.map(opt => ({
+      ...opt,
+      price: Number(opt.price)
+    }));
+
+    console.log('Processed options before update:', options);
+
+    // Update with new options
     const updatedOptions = await CustomizationOptions.findOneAndUpdate(
       { productType },
       {
@@ -195,7 +286,7 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
           updatedAt: new Date()
         }
       },
-      {
+      { 
         new: true,
         runValidators: true,
         upsert: true,
@@ -207,13 +298,25 @@ router.put('/:productType', authenticateToken, handleUpload, async (req, res) =>
       return res.status(404).json({ message: 'Failed to update customization options' });
     }
 
+    console.log('Updated options:', {
+      productType,
+      colorsCount: updatedOptions.colors.length,
+      sizesCount: updatedOptions.sizes.length,
+      fontsCount: updatedOptions.fonts.length,
+      addOnsCount: updatedOptions.addOns.length,
+      backgroundsCount: updatedOptions.backgrounds.length,
+      dimmerOptionsCount: updatedOptions.dimmerOptions.length,
+      dimmerIds: updatedOptions.dimmerOptions.map(opt => opt.id),
+      addOnImages: updatedOptions.addOns.map(addon => addon.image),
+      backgroundImages: updatedOptions.backgrounds.map(bg => bg.image)
+    });
+
     res.json(updatedOptions);
   } catch (error) {
     console.error('Error updating customization options:', error);
     res.status(400).json({ message: error.message });
   }
 });
-
 
 // Delete customization options (soft delete)
 router.delete('/:productType', authenticateToken, async (req, res) => {
